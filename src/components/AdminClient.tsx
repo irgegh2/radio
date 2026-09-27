@@ -533,10 +533,18 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
             </span>
           </div>
           <div className="onair-actions">
-            {queue?.control.status === 'PAUSED'
-              ? <button onClick={() => broadcast('resume')}><Play size={15} /> Продолжить</button>
-              : <button onClick={() => broadcast('pause')}><Pause size={15} /> Пауза</button>}
-            <button onClick={() => broadcast('stop')}><Square size={15} /> Стоп</button>
+            {queue?.control.status === 'PLAYING' && (
+              <button onClick={() => broadcast('pause')}><Pause size={15} /> Пауза</button>
+            )}
+            {queue?.control.status === 'PAUSED' && (
+              <button onClick={() => broadcast('resume')}><Play size={15} /> Продолжить</button>
+            )}
+            {queue?.control.status === 'STOPPED' && (
+              <button onClick={() => broadcast('auto')}><Play size={15} /> Запустить эфир</button>
+            )}
+            <button onClick={() => broadcast('stop')} disabled={queue?.control.status === 'STOPPED'}>
+              <Square size={15} /> Стоп
+            </button>
             <button onClick={() => broadcast('auto')}><RotateCcw size={15} /> Вернуть автоматику</button>
             <button onClick={restartRotation}><RefreshCw size={15} /> Перезапустить ротацию</button>
           </div>
