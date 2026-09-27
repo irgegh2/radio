@@ -805,8 +805,12 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
           <input
             value={coverUrl}
             onChange={(e) => {
-              setCoverUrl(e.target.value);
-              if (safeImageUrl(e.target.value)) setCoverPreviewUrl('');
+              const value = e.target.value;
+              setCoverUrl(value);
+              if (value) {
+                setDraft((current) => current ? { ...current, coverKey: null, coverPreviewUrl: null } : current);
+              }
+              setCoverPreviewUrl('');
             }}
             placeholder="Или URL обложки"
           />
