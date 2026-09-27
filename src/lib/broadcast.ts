@@ -498,7 +498,7 @@ export async function getBroadcastState() {
       });
     }
 
-    if (sequence && sequence.tracks.length && index >= 0) {
+    if (sequence && sequence.tracks.length && index >= 0 && forced.length === 0) {
       let cursor = Math.max(
         endMs,
         forced.length
@@ -731,5 +731,30 @@ export async function queueTrackNext(trackId: number) {
     create: { id: 1, version: 1 }
   });
 
+  return getBroadcastState();
+}
+
+
+export async function stopBroadcast() {
+  const now = new Date();
+  await prisma.queueOverride.deleteMany({});
+  await prisma.broadcastControl.upsert({
+    where: { id: 1 },
+    update: {
+      mode: 'MANUAL_TRACK',
+      status: 'PAUSED',
+      manualTrackId: null,
+      manualPlaylistId: null,
+      manualStartedAt: null,
+      manualOffsetSeconds: 0,
+      version: { increment: 1 }
+    },
+    create: {
+      id: 1,
+      mode: 'MANUAL_TRACK',
+      status: 'PAUSED'
+    }
+  });
+  await closeOpenPlay(now);
   return getBroadcastState();
 }
