@@ -26,6 +26,7 @@ export async function POST(req: Request) {
       artist: String(body.artist),
       genre: body.genre ? String(body.genre) : null,
       coverUrl: body.coverUrl ? String(body.coverUrl) : null,
+      coverKey: body.coverKey ? String(body.coverKey) : null,
       audioUrl: String(body.audioUrl),
       s3Key: body.s3Key ? String(body.s3Key) : null,
       duration: Math.round(duration),
@@ -72,6 +73,7 @@ export async function PATCH(req: Request) {
       artist: body.artist === undefined ? undefined : String(body.artist),
       genre: body.genre === undefined ? undefined : (body.genre ? String(body.genre) : null),
       coverUrl: body.coverUrl === undefined ? undefined : (body.coverUrl ? String(body.coverUrl) : null),
+      coverKey: body.coverKey === undefined ? undefined : (body.coverKey ? String(body.coverKey) : null),
       audioUrl: body.audioUrl === undefined ? undefined : String(body.audioUrl),
       duration: body.duration === undefined ? undefined : Math.max(1, Math.round(Number(body.duration))),
       kind: body.kind === undefined ? undefined : (body.kind === 'JINGLE' ? 'JINGLE' : 'MUSIC')
