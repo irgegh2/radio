@@ -33,21 +33,37 @@ export function isStorageConfigured() {
   return Boolean(config());
 }
 
-export async function uploadTrackFile(fileName: string, contentType: string, body: Uint8Array) {
+function safeName(fileName: string) {
+  return fileName.replace(/[^a-zA-Z0-9._-]/g, '-');
+}
+
+export async function uploadMediaFile(
+  prefix: 'tracks' | 'covers',
+  fileName: string,
+  contentType: string,
+  body: Uint8Array
+) {
   const { c, s3 } = client();
-  const safe = fileName.replace(/[^a-zA-Z0-9._-]/g, '-');
-  const key = `tracks/${Date.now()}-${safe}`;
+  const key = `${prefix}/${Date.now()}-${safeName(fileName)}`;
 
   await s3.send(
     new PutObjectCommand({
       Bucket: c.bucket,
       Key: key,
-      ContentType: contentType || 'audio/mpeg',
+      ContentType: contentType || 'application/octet-stream',
       Body: body
     })
   );
 
   return { key };
+}
+
+export async function uploadTrackFile(fileName: string, contentType: string, body: Uint8Array) {
+  return uploadMediaFile('tracks', fileName, contentType || 'audio/mpeg', body);
+}
+
+export async function uploadCoverFile(fileName: string, contentType: string, body: Uint8Array) {
+  return uploadMediaFile('covers', fileName, contentType || 'image/jpeg', body);
 }
 
 export async function createTrackPlaybackUrl(key: string) {
@@ -64,7 +80,7 @@ export async function createTrackPlaybackUrl(key: string) {
 
 export async function createTrackUploadUrl(fileName: string, contentType: string) {
   const { c, s3 } = client();
-  const safe = fileName.replace(/[^a-zA-Z0-9._-]/g, '-');
+  const safe = safeName(fileName);
   const key = `tracks/${Date.now()}-${safe}`;
 
   const uploadUrl = await getSignedUrl(
