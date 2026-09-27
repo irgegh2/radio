@@ -13,8 +13,8 @@ export async function GET() {
 export async function POST(req: Request) {
   if (!(await isAdmin())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const body = await req.json();
-  const days = Array.isArray(body.dayOfWeeks)
-    ? body.dayOfWeeks.map(Number)
+  const days: number[] = Array.isArray(body.dayOfWeeks)
+    ? body.dayOfWeeks.map((day: unknown) => Number(day))
     : [Number(body.dayOfWeek)];
 
   if (!days.length || days.some((day) => day < 0 || day > 6)) {
