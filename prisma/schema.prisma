@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Track {
+  id        Int      @id @default(autoincrement())
+  title     String
+  artist    String
+  genre     String?
+  coverUrl  String?
+  audioUrl  String
+  s3Key     String?
+  duration  Int?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  plays     Play[]
+}
+
+model Show {
+  id          Int      @id @default(autoincrement())
+  title       String
+  host        String
+  description String?
+  imageUrl    String?
+  startHour   Int
+  endHour     Int
+  dayOfWeek   Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+model Play {
+  id        Int      @id @default(autoincrement())
+  trackId   Int
+  track     Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  startedAt DateTime @default(now())
+  endedAt   DateTime?
+}
+
+model StationSettings {
+  id          Int     @id @default(1)
+  stationName String  @default("NEXUS RADIO")
+  tagline     String  @default("Больше, чем просто музыка")
+  streamUrl   String?
+  isLive      Boolean @default(true)
+  volume      Int     @default(72)
+}
