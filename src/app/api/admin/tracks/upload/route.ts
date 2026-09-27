@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { parseBuffer } from 'music-metadata';
 import { isAdmin } from '@/lib/auth';
 import {
+  createTrackPlaybackUrl,
   isStorageConfigured,
   uploadCoverFile,
   uploadTrackFile
@@ -72,9 +73,12 @@ export async function POST(req: Request) {
 
     const titleFromName = file.name.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').trim();
 
+    const coverPreviewUrl = coverKey ? await createTrackPlaybackUrl(coverKey) : null;
+
     return NextResponse.json({
       key: audio.key,
       coverKey,
+      coverPreviewUrl,
       metadata: {
         title: metadata.common.title || titleFromName,
         artist: metadata.common.artist || metadata.common.albumartist || '',
