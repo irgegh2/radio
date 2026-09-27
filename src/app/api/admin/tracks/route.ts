@@ -34,6 +34,28 @@ export async function POST(req: Request) {
     }
   });
 
+  const settings = await prisma.stationSettings.findUnique({ where: { id: 1 } });
+  if (settings?.defaultPlaylistId) {
+    const last = await prisma.playlistTrack.findFirst({
+      where: { playlistId: settings.defaultPlaylistId },
+      orderBy: { position: 'desc' }
+    });
+    await prisma.playlistTrack.upsert({
+      where: {
+        playlistId_trackId: {
+          playlistId: settings.defaultPlaylistId,
+          trackId: track.id
+        }
+      },
+      update: {},
+      create: {
+        playlistId: settings.defaultPlaylistId,
+        trackId: track.id,
+        position: (last?.position ?? -1) + 1
+      }
+    });
+  }
+
   return NextResponse.json(track, { status: 201 });
 }
 
