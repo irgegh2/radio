@@ -7,7 +7,8 @@ import {
   playTrackNow,
   queueTrackNext,
   resumeBroadcast,
-  returnToAuto
+  returnToAuto,
+  stopBroadcast
 } from '@/lib/broadcast';
 
 export const dynamic = 'force-dynamic';
@@ -24,6 +25,7 @@ export async function POST(req: Request) {
     const body = await req.json();
 
     if (body.action === 'pause') return NextResponse.json(await pauseBroadcast());
+    if (body.action === 'stop') return NextResponse.json(await stopBroadcast());
     if (body.action === 'resume') return NextResponse.json(await resumeBroadcast());
     if (body.action === 'auto') return NextResponse.json(await returnToAuto());
     if (body.action === 'play-track') {
