@@ -16,9 +16,44 @@ model Track {
   audioUrl  String
   s3Key     String?
   duration  Int?
+  kind      String   @default("MUSIC")
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   plays     Play[]
+  playlistItems PlaylistTrack[]
+}
+
+model Playlist {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  items       PlaylistTrack[]
+  schedules   ScheduleBlock[]
+}
+
+model PlaylistTrack {
+  id         Int      @id @default(autoincrement())
+  playlistId Int
+  trackId    Int
+  position   Int      @default(0)
+  playlist   Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  track      Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@unique([playlistId, trackId])
+}
+
+model ScheduleBlock {
+  id          Int      @id @default(autoincrement())
+  title       String
+  dayOfWeek   Int
+  startSecond Int
+  endSecond   Int
+  active      Boolean  @default(true)
+  playlistId  Int
+  playlist    Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
 }
 
 model Show {
@@ -43,10 +78,13 @@ model Play {
 }
 
 model StationSettings {
-  id          Int     @id @default(1)
-  stationName String  @default("NEXUS RADIO")
-  tagline     String  @default("Больше, чем просто музыка")
-  streamUrl   String?
-  isLive      Boolean @default(true)
-  volume      Int     @default(72)
+  id                Int      @id @default(1)
+  stationName       String   @default("NEXUS RADIO")
+  tagline           String   @default("Больше, чем просто музыка")
+  streamUrl         String?
+  isLive            Boolean  @default(true)
+  volume            Int      @default(72)
+  timezone          String   @default("Europe/Moscow")
+  rotationStartedAt DateTime @default(now())
+  defaultPlaylistId Int?
 }
