@@ -87,11 +87,28 @@ function seededShuffle<T>(items: T[], seed: string) {
   return result;
 }
 
+function safeMediaUrl(value: string | null | undefined) {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (
+    trimmed.startsWith('/') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('data:')
+  ) return trimmed;
+  return null;
+}
+
 async function playable<T extends TrackLike>(track: T) {
   return {
     ...track,
-    audioUrl: track.s3Key ? `/api/public/media/${track.id}` : track.audioUrl,
-    coverUrl: track.coverKey ? `/api/public/media/${track.id}/cover` : track.coverUrl
+    audioUrl: track.s3Key
+      ? `/api/public/media/${track.id}`
+      : (safeMediaUrl(track.audioUrl) || ''),
+    coverUrl: track.coverKey
+      ? `/api/public/media/${track.id}/cover`
+      : safeMediaUrl(track.coverUrl)
   };
 }
 
@@ -638,8 +655,11 @@ export async function returnToAuto() {
 }
 
 export async function playTrackNow(trackId: number) {
+  if (!Number.isFinite(trackId) || trackId <= 0) throw new Error('Не выбран трек');
   const track = await prisma.track.findUnique({ where: { id: trackId } });
-  if (!track || !track.active || !(track.duration || 0)) throw new Error('Track unavailable');
+  if (!track) throw new Error('Трек не найден');
+  if (!track.active) throw new Error('Трек выключен в медиатеке');
+  if (!(track.duration || 0)) throw new Error('У трека не указана длительность');
 
   const now = new Date();
   await prisma.queueOverride.deleteMany({});
@@ -667,8 +687,15 @@ export async function playTrackNow(trackId: number) {
 }
 
 export async function playPlaylistNow(playlistId: number) {
-  const playlist = await prisma.playlist.findUnique({ where: { id: playlistId } });
-  if (!playlist || !playlist.active) throw new Error('Playlist unavailable');
+  if (!Number.isFinite(playlistId) || playlistId <= 0) throw new Error('Не выбран плейлист');
+  const playlist = await prisma.playlist.findUnique({
+    where: { id: playlistId },
+    include: { items: { include: { track: true } } }
+  });
+  if (!playlist) throw new Error('Плейлист не найден');
+  if (!playlist.active) throw new Error('Плейлист выключен');
+  const playableItems = playlist.items.filter((item) => item.track.active && (item.track.duration || 0) > 0);
+  if (!playableItems.length) throw new Error('В плейлисте нет активных треков с длительностью');
 
   const now = new Date();
   await prisma.queueOverride.deleteMany({});
@@ -696,10 +723,13 @@ export async function playPlaylistNow(playlistId: number) {
 }
 
 export async function queueTrackNext(trackId: number) {
+  if (!Number.isFinite(trackId) || trackId <= 0) throw new Error('Не выбран трек');
   const state = await getBroadcastState();
   const track = await prisma.track.findUnique({ where: { id: trackId } });
 
-  if (!track || !track.active || !(track.duration || 0)) throw new Error('Track unavailable');
+  if (!track) throw new Error('Трек не найден');
+  if (!track.active) throw new Error('Трек выключен в медиатеке');
+  if (!(track.duration || 0)) throw new Error('У трека не указана длительность');
 
   const last = await prisma.queueOverride.findFirst({
     orderBy: [{ scheduledAt: 'desc' }, { position: 'desc' }],
