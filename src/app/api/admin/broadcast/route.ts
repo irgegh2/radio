@@ -41,6 +41,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
   } catch (error) {
     console.error('Broadcast control failed', error);
-    return NextResponse.json({ error: 'Не удалось изменить эфир' }, { status: 400 });
+    const message = error instanceof Error ? error.message : 'Не удалось изменить эфир';
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }
