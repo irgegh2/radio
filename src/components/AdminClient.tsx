@@ -14,6 +14,7 @@ import {
   RefreshCw,
   RotateCcw,
   SkipForward,
+  Square,
   Trash2,
   Upload
 } from 'lucide-react';
@@ -523,6 +524,7 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
             {queue?.control.status === 'PAUSED'
               ? <button onClick={() => broadcast('resume')}><Play size={15} /> Продолжить</button>
               : <button onClick={() => broadcast('pause')}><Pause size={15} /> Пауза</button>}
+            <button onClick={() => broadcast('stop')}><Square size={15} /> Стоп</button>
             <button onClick={() => broadcast('auto')}><RotateCcw size={15} /> Вернуть автоматику</button>
             <button onClick={restartRotation}><RefreshCw size={15} /> Перезапустить ротацию</button>
           </div>
