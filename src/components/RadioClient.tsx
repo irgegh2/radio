@@ -77,6 +77,7 @@ export default function RadioClient() {
   const [error, setError] = useState('');
   const [favorite, setFavorite] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const stationRef = useRef<Station | null>(null);
   const hasUserStarted = useRef(false);
   const autoplayTried = useRef(false);
 
@@ -101,6 +102,12 @@ export default function RadioClient() {
     const audio = audioRef.current;
     if (!audio || !source) return;
 
+    if (stationRef.current?.control.status !== 'PLAYING') {
+      audio.pause();
+      setPlaying(false);
+      return;
+    }
+
     if (!usingLiveStream && Number.isFinite(audio.duration)) {
       const target = liveOffset();
       if (Math.abs(audio.currentTime - target) > 1.5) audio.currentTime = target;
@@ -122,13 +129,32 @@ export default function RadioClient() {
       const response = await fetch('/api/public/station', { cache: 'no-store' });
       if (!response.ok) throw new Error('Не удалось получить данные станции');
       const json: Station = await response.json();
+      stationRef.current = json;
+
+      if (json.control.status !== 'PLAYING') {
+        audioRef.current?.pause();
+        setPlaying(false);
+      }
+
       setData((previous) => {
-        if (previous?.currentTrack?.id !== json.currentTrack?.id && hasUserStarted.current) {
+        if (
+          previous?.currentTrack?.id !== json.currentTrack?.id &&
+          hasUserStarted.current &&
+          json.control.status === 'PLAYING'
+        ) {
           requestAnimationFrame(() => {
             const audio = audioRef.current;
             if (!audio) return;
             audio.load();
-            audio.addEventListener('loadedmetadata', () => syncToLive(true), { once: true });
+            audio.addEventListener(
+              'loadedmetadata',
+              () => {
+                if (stationRef.current?.control.status === 'PLAYING') {
+                  syncToLive(true);
+                }
+              },
+              { once: true }
+            );
           });
         }
         return json;
@@ -154,8 +180,9 @@ export default function RadioClient() {
     const audio = audioRef.current;
     if (!audio || !data) return;
 
-    if (data.control.status === 'PAUSED') {
+    if (data.control.status !== 'PLAYING') {
       audio.pause();
+      setPlaying(false);
       return;
     }
 
@@ -178,12 +205,13 @@ export default function RadioClient() {
   }, [data?.currentTrack?.id, data?.control.status, data?.control.version, source, liveOffset, usingLiveStream]);
 
   useEffect(() => {
-    if (!source || !audioRef.current || autoplayTried.current || data?.control.status === 'PAUSED') return;
+    if (!source || !audioRef.current || autoplayTried.current || data?.control.status !== 'PLAYING') return;
     autoplayTried.current = true;
 
     const audio = audioRef.current;
     const attempt = async () => {
       try {
+        if (stationRef.current?.control.status !== 'PLAYING') return;
         if (!usingLiveStream && audio.readyState >= 1) audio.currentTime = liveOffset();
         await audio.play();
         hasUserStarted.current = true;
@@ -209,8 +237,10 @@ export default function RadioClient() {
       return;
     }
 
-    if (data?.control.status === 'PAUSED') {
-      setError('Эфир временно поставлен на паузу из админки.');
+    if (data?.control.status !== 'PLAYING') {
+      setError(data?.control.status === 'STOPPED'
+        ? 'Эфир остановлен из админки.'
+        : 'Эфир временно поставлен на паузу из админки.');
       return;
     }
 
@@ -227,8 +257,10 @@ export default function RadioClient() {
   }
 
   async function goLive() {
-    if (data?.control.status === 'PAUSED') {
-      setError('Эфир временно поставлен на паузу из админки.');
+    if (data?.control.status !== 'PLAYING') {
+      setError(data?.control.status === 'STOPPED'
+        ? 'Эфир остановлен из админки.'
+        : 'Эфир временно поставлен на паузу из админки.');
       return;
     }
     hasUserStarted.current = true;
@@ -250,7 +282,11 @@ export default function RadioClient() {
           <a href="/admin">Админка</a>
         </nav>
         <div className="top-actions">
-          <span className="live-mini"><i /> {data?.settings.isLive ? 'LIVE' : 'OFF AIR'}</span>
+          <span className="live-mini"><i /> {
+            data?.control.status === 'STOPPED'
+              ? 'STOPPED'
+              : data?.settings.isLive ? 'LIVE' : 'OFF AIR'
+          }</span>
           <span className="signal"><i /><i /><i /></span>
         </div>
       </header>
@@ -267,7 +303,13 @@ export default function RadioClient() {
         <div className="hero-player">
           <div className="eyebrow">
             <span className="live-pill"><b /> LIVE</span>
-            <span>{data?.control.status === 'PAUSED' ? 'ЭФИР НА ПАУЗЕ' : (usingLiveStream ? 'LIVE STREAM' : data?.playlistName || 'AUTO DJ')}</span>
+            <span>{
+              data?.control.status === 'STOPPED'
+                ? 'ЭФИР ОСТАНОВЛЕН'
+                : data?.control.status === 'PAUSED'
+                  ? 'ЭФИР НА ПАУЗЕ'
+                  : (usingLiveStream ? 'LIVE STREAM' : data?.playlistName || 'AUTO DJ')
+            }</span>
           </div>
           <h1>{track?.title || 'NEXUS RADIO'}</h1>
           <h2>{track?.artist || data?.settings.tagline || 'Добавь музыку в админке'}</h2>
@@ -301,18 +343,29 @@ export default function RadioClient() {
           <audio
             ref={audioRef}
             {...(source ? { src: source } : {})}
+            autoPlay={data?.control.status === 'PLAYING'}
+            playsInline
             preload="auto"
             onPause={() => setPlaying(false)}
             onPlay={() => setPlaying(true)}
             onLoadedMetadata={() => {
-              if (hasUserStarted.current && !usingLiveStream && audioRef.current) {
+              if (
+                stationRef.current?.control.status === 'PLAYING' &&
+                hasUserStarted.current &&
+                !usingLiveStream &&
+                audioRef.current
+              ) {
                 audioRef.current.currentTime = liveOffset();
               }
             }}
             onEnded={() => load()}
             onError={() => source && setError('Источник аудио недоступен. Проверь S3 или URL потока.')}
           />
-          {!playing && source && <p className="autoplay-note">Нажми Play один раз, если браузер заблокировал автоматический звук.</p>}
+          {!playing && source && data?.control.status === 'PLAYING' && (
+            <p className="autoplay-note">
+              Эфир запускается автоматически, если браузер разрешает звук. Если Safari заблокировал автозапуск — нажми Play один раз.
+            </p>
+          )}
           {error && <p className="error-banner">{error}</p>}
         </div>
 
