@@ -165,7 +165,7 @@ export default function RadioClient() {
 
           <audio
             ref={audioRef}
-            src={source}
+            {...(source ? { src: source } : {})}
             preload="none"
             onPause={() => setPlaying(false)}
             onPlay={() => setPlaying(true)}
