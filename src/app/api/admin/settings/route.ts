@@ -26,6 +26,9 @@ export async function PATCH(req: Request) {
     defaultPlaylistId: body.defaultPlaylistId === undefined
       ? undefined
       : (body.defaultPlaylistId ? Number(body.defaultPlaylistId) : null),
+    repeatWindow: body.repeatWindow === undefined
+      ? undefined
+      : Math.max(0, Math.min(500, Number(body.repeatWindow))),
     rotationStartedAt: body.restartRotation ? new Date() : undefined
   };
 
@@ -42,7 +45,8 @@ export async function PATCH(req: Request) {
         volume: data.volume ?? 72,
         timezone: data.timezone || 'Europe/Moscow',
         defaultPlaylistId: data.defaultPlaylistId ?? null,
-        rotationStartedAt: data.rotationStartedAt || new Date()
+        rotationStartedAt: data.rotationStartedAt || new Date(),
+        repeatWindow: data.repeatWindow ?? 50
       }
     })
   );
