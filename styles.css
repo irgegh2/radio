@@ -89,3 +89,26 @@
 .row-actions .status-active{border-color:rgba(255,43,86,.32);background:rgba(255,43,86,.11);color:#ff7590}
 .upload-box{gap:10px}
 .upload-box svg{flex:0 0 auto}
+
+
+/* synchronized broadcast + automation admin */
+.radio-player-row{grid-template-columns:38px 68px 38px minmax(170px,1fr) 190px}
+.live-sync-control{color:#ff6684}
+.autoplay-note{font-size:11px;color:#8f95a4;margin:12px 0 0}
+.admin-form select,.schedule-form select{width:100%;background:#080b11;border:1px solid var(--line);color:#fff;border-radius:10px;padding:12px 13px;outline:none}
+.admin-form .three{display:grid;grid-template-columns:120px 1fr 1.2fr;gap:10px}
+.detected{color:#9da4b3}
+.admin-divider{border:0;border-top:1px solid var(--line);margin:22px 0}
+.queue-card>button{display:flex;align-items:center;gap:7px;margin-top:14px}
+.queue-list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.queue-row{display:grid;grid-template-columns:95px 90px 1fr 60px;gap:14px;align-items:center;padding:11px 14px;border-bottom:1px solid rgba(255,255,255,.055);font-size:12px}
+.queue-row:last-child{border-bottom:0}.queue-row time{font-variant-numeric:tabular-nums;color:#d9dce5}.queue-row span{font-size:10px;color:#777e8e;letter-spacing:.08em}.queue-row em{font-style:normal;text-align:right;color:#8e95a5}.queue-row.on-now{background:rgba(255,43,86,.09);box-shadow:inset 3px 0 #ff2b56}.queue-row.on-now time,.queue-row.on-now span{color:#ff6c89}
+.playlist-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.playlist-card{border:1px solid var(--line);background:#090c12;border-radius:12px;padding:16px}.playlist-card h3{margin:0 0 5px}.playlist-card p{margin:0 0 14px;color:#7f8594;font-size:11px}
+.playlist-item{display:grid;grid-template-columns:30px 1fr 48px 32px;gap:8px;align-items:center;border-top:1px solid rgba(255,255,255,.055);padding:9px 0;font-size:11px}.playlist-item span{color:#666d7c}.playlist-item em{font-style:normal;color:#858c9b}.playlist-item button{padding:6px}
+.schedule-form{display:grid;grid-template-columns:1.2fr .65fr .8fr .8fr 1.15fr auto;gap:9px;align-items:center}.schedule-form button{white-space:nowrap}
+.schedule-block-list{display:flex;flex-direction:column;margin-top:16px}.schedule-block-row{display:grid;grid-template-columns:200px 1fr 1fr 42px;gap:12px;align-items:center;padding:11px 2px;border-top:1px solid rgba(255,255,255,.06);font-size:12px}.schedule-block-row span,.schedule-block-row em{color:#8f95a4;font-style:normal}.schedule-block-row button{padding:8px}
+.compact-show-form{margin:0 20px 18px}
+.media-row{grid-template-columns:48px minmax(220px,1fr) minmax(140px,.55fr) auto}.media-row .row-actions{flex-wrap:wrap}
+@media(max-width:900px){.admin-form .three{grid-template-columns:1fr}.playlist-grid{grid-template-columns:1fr}.schedule-form{grid-template-columns:1fr 1fr}.queue-row{grid-template-columns:85px 78px 1fr 48px}.radio-player-row{grid-template-columns:38px 68px 38px 1fr}.radio-player-row .volume-wrap{grid-column:1/-1}}
+@media(max-width:560px){.schedule-form{grid-template-columns:1fr}.queue-row{grid-template-columns:76px 1fr 45px}.queue-row span{display:none}.schedule-block-row{grid-template-columns:1fr auto}.schedule-block-row span,.schedule-block-row em{grid-column:1/-1}.media-row{grid-template-columns:42px 1fr}.media-row .row-actions{grid-column:1/-1;justify-content:flex-start}}
