@@ -6,29 +6,23 @@ async function main() {
   await prisma.stationSettings.upsert({
     where: { id: 1 },
     update: {},
-    create: { id: 1, stationName: 'NEXUS RADIO', tagline: 'Больше, чем просто музыка', isLive: true, volume: 72 }
+    create: {
+      id: 1,
+      stationName: 'NEXUS RADIO',
+      tagline: 'Больше, чем просто музыка',
+      isLive: true,
+      volume: 72
+    }
   });
 
-  if ((await prisma.track.count()) === 0) {
-    await prisma.track.createMany({
-      data: [
-        {
-          title: 'Blinding Lights',
-          artist: 'The Weeknd',
-          genre: 'Pop / Synthwave',
-          audioUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-audio/t-rex-roar.mp3',
-          coverUrl: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=900&q=88'
-        },
-        {
-          title: 'Houdini',
-          artist: 'Dua Lipa',
-          genre: 'Pop',
-          audioUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-audio/t-rex-roar.mp3',
-          coverUrl: 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=600&q=80'
-        }
-      ]
-    });
-  }
+  // Удаляем старые демонстрационные звуки, которые использовались только на этапе прототипа.
+  await prisma.track.deleteMany({
+    where: {
+      audioUrl: {
+        contains: 't-rex-roar.mp3'
+      }
+    }
+  });
 
   if ((await prisma.show.count()) === 0) {
     await prisma.show.createMany({
@@ -44,4 +38,9 @@ async function main() {
   }
 }
 
-main().finally(() => prisma.$disconnect());
+main()
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  })
+  .finally(() => prisma.$disconnect());
