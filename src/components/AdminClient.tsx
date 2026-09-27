@@ -116,6 +116,18 @@ function localTime(value: string) {
   });
 }
 
+function safeImageUrl(value?: string | null) {
+  if (!value) return '';
+  const trimmed = value.trim();
+  return (
+    trimmed.startsWith('/') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('data:')
+  ) ? trimmed : '';
+}
+
 export default function AdminClient({ authenticated }: { authenticated: boolean }) {
   const [authed, setAuthed] = useState(authenticated);
   const [password, setPassword] = useState('');
@@ -690,8 +702,8 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
           {tracks.map((track) => (
             <div className="table-row media-row" key={track.id}>
               <div className="track-thumb">
-                {(track.coverKey || track.coverUrl)
-                  ? <img src={track.coverKey ? `/api/public/media/${track.id}/cover` : track.coverUrl || ''} alt="" />
+                {(track.coverKey || safeImageUrl(track.coverUrl))
+                  ? <img src={track.coverKey ? `/api/public/media/${track.id}/cover` : safeImageUrl(track.coverUrl)} alt="" />
                   : <Music2 size={18} />}
               </div>
               <div>
