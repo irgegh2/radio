@@ -1,5 +1,4 @@
 import { prisma } from '@/lib/prisma';
-import { createTrackPlaybackUrl, isStorageConfigured } from '@/lib/storage';
 
 type TrackLike = {
   id: number;
@@ -42,14 +41,9 @@ function zonedParts(date: Date, timeZone: string) {
 }
 
 async function playable<T extends TrackLike>(track: T) {
-  if (track.s3Key && isStorageConfigured()) {
-    try {
-      return { ...track, audioUrl: await createTrackPlaybackUrl(track.s3Key) };
-    } catch (error) {
-      console.error('Failed to sign S3 playback URL', error);
-    }
-  }
-  return track;
+  return track.s3Key
+    ? { ...track, audioUrl: `/api/public/media/${track.id}` }
+    : track;
 }
 
 function pickAtElapsed(tracks: TrackLike[], elapsedSeconds: number) {
@@ -166,7 +160,7 @@ export async function getBroadcastState() {
         startsAt: new Date(startMs).toISOString(),
         offsetSeconds: step === 0 ? picked.offsetSeconds : 0
       });
-      startMs += (step === 0 ? currentDuration - picked.offsetSeconds : track.duration || 0) * 1000;
+      startMs += (track.duration || 0) * 1000;
     }
   }
 
