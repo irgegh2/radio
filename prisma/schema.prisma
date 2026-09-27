@@ -8,19 +8,21 @@ datasource db {
 }
 
 model Track {
-  id        Int      @id @default(autoincrement())
-  title     String
-  artist    String
-  genre     String?
-  coverUrl  String?
-  audioUrl  String
-  s3Key     String?
-  duration  Int?
-  kind      String   @default("MUSIC")
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  plays     Play[]
+  id            Int      @id @default(autoincrement())
+  title         String
+  artist        String
+  genre         String?
+  coverUrl      String?
+  coverKey      String?
+  audioUrl      String
+  s3Key         String?
+  duration      Int?
+  kind          String   @default("MUSIC")
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  plays         Play[]
   playlistItems PlaylistTrack[]
+  queueItems    QueueOverride[]
 }
 
 model Playlist {
@@ -28,6 +30,7 @@ model Playlist {
   name        String
   description String?
   active      Boolean  @default(true)
+  shuffle     Boolean  @default(true)
   createdAt   DateTime @default(now())
   items       PlaylistTrack[]
   schedules   ScheduleBlock[]
@@ -77,6 +80,26 @@ model Play {
   endedAt   DateTime?
 }
 
+model QueueOverride {
+  id        Int      @id @default(autoincrement())
+  trackId   Int
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  track     Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+}
+
+model BroadcastControl {
+  id                  Int      @id @default(1)
+  mode                String   @default("AUTO")
+  status              String   @default("PLAYING")
+  manualTrackId       Int?
+  manualPlaylistId    Int?
+  manualStartedAt     DateTime?
+  manualOffsetSeconds Int      @default(0)
+  version             Int      @default(0)
+  updatedAt           DateTime @updatedAt
+}
+
 model StationSettings {
   id                Int      @id @default(1)
   stationName       String   @default("NEXUS RADIO")
@@ -87,4 +110,5 @@ model StationSettings {
   timezone          String   @default("Europe/Moscow")
   rotationStartedAt DateTime @default(now())
   defaultPlaylistId Int?
+  repeatWindow      Int      @default(50)
 }
