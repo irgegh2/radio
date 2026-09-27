@@ -87,6 +87,21 @@ type Settings = {
 type UploadDraft = {
   key: string;
   coverKey?: string | null;
+  coverPreviewUrl?: string | null;
+};
+
+type EditTrackDraft = {
+  id: number;
+  title: string;
+  artist: string;
+  genre: string;
+  duration: string;
+  kind: string;
+  active: boolean;
+  coverUrl: string;
+  coverKey: string | null;
+  coverPreviewUrl: string;
+  audioUrl: string;
 };
 
 const days = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
@@ -147,6 +162,9 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
   const [kind, setKind] = useState('MUSIC');
   const [coverUrl, setCoverUrl] = useState('');
   const [directUrl, setDirectUrl] = useState('');
+  const [coverPreviewUrl, setCoverPreviewUrl] = useState('');
+  const [coverUploading, setCoverUploading] = useState(false);
+  const [editTrackDraft, setEditTrackDraft] = useState<EditTrackDraft | null>(null);
 
   const activeTracks = useMemo(() => tracks.filter((track) => track.active), [tracks]);
 
@@ -272,7 +290,12 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
       return;
     }
 
-    setDraft({ key: json.key, coverKey: json.coverKey || null });
+    setDraft({
+      key: json.key,
+      coverKey: json.coverKey || null,
+      coverPreviewUrl: json.coverPreviewUrl || null
+    });
+    setCoverPreviewUrl(json.coverPreviewUrl || '');
     setTitle(json.metadata?.title || '');
     setArtist(json.metadata?.artist || '');
     setGenre(json.metadata?.genre || '');
@@ -289,6 +312,7 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
     setKind('MUSIC');
     setCoverUrl('');
     setDirectUrl('');
+    setCoverPreviewUrl('');
   }
 
   async function addTrack(e: FormEvent<HTMLFormElement>) {
@@ -322,32 +346,96 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
     await loadAll();
   }
 
-  async function editTrack(track: Track) {
-    const nextArtist = prompt('Исполнитель', track.artist);
-    if (nextArtist === null) return;
-    const nextTitle = prompt('Название', track.title);
-    if (nextTitle === null) return;
-    const nextGenre = prompt('Жанр', track.genre || '');
-    if (nextGenre === null) return;
-    const nextDuration = prompt('Длительность в секундах', String(track.duration || ''));
-    if (nextDuration === null) return;
+  async function uploadCover(file: File | null, forEdit = false) {
+    if (!file?.size) return;
+    setCoverUploading(true);
+
+    const form = new FormData();
+    form.set('file', file);
+
+    const response = await fetch('/api/admin/tracks/cover-upload', {
+      method: 'POST',
+      body: form
+    });
+    const json = await response.json();
+    setCoverUploading(false);
+
+    if (!response.ok) {
+      setMsg(json.error || 'Не удалось загрузить обложку');
+      return;
+    }
+
+    if (forEdit && editTrackDraft) {
+      setEditTrackDraft({
+        ...editTrackDraft,
+        coverKey: json.key,
+        coverUrl: '',
+        coverPreviewUrl: json.previewUrl || ''
+      });
+    } else {
+      setDraft((current) => current
+        ? { ...current, coverKey: json.key, coverPreviewUrl: json.previewUrl || '' }
+        : current
+      );
+      setCoverUrl('');
+      setCoverPreviewUrl(json.previewUrl || '');
+    }
+
+    setMsg('Обложка загружена в S3');
+  }
+
+  function editTrack(track: Track) {
+    setEditTrackDraft({
+      id: track.id,
+      title: track.title,
+      artist: track.artist,
+      genre: track.genre || '',
+      duration: String(track.duration || ''),
+      kind: track.kind,
+      active: track.active,
+      coverUrl: track.coverUrl || '',
+      coverKey: track.coverKey || null,
+      coverPreviewUrl: track.coverKey
+        ? `/api/public/media/${track.id}/cover`
+        : safeImageUrl(track.coverUrl),
+      audioUrl: track.audioUrl || ''
+    });
+
+    requestAnimationFrame(() => {
+      document.getElementById('track-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  async function saveTrackEdit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!editTrackDraft) return;
 
     const response = await fetch('/api/admin/tracks', {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        id: track.id,
-        artist: nextArtist,
-        title: nextTitle,
-        genre: nextGenre,
-        duration: Number(nextDuration)
+        id: editTrackDraft.id,
+        artist: editTrackDraft.artist,
+        title: editTrackDraft.title,
+        genre: editTrackDraft.genre,
+        duration: Number(editTrackDraft.duration),
+        kind: editTrackDraft.kind,
+        active: editTrackDraft.active,
+        coverUrl: editTrackDraft.coverUrl,
+        coverKey: editTrackDraft.coverKey,
+        audioUrl: editTrackDraft.audioUrl
       })
     });
 
-    if (response.ok) {
-      setMsg('Трек обновлён');
-      await loadAll();
+    const json = await response.json();
+    if (!response.ok) {
+      setMsg(json.error || 'Не удалось сохранить изменения');
+      return;
     }
+
+    setMsg('Трек полностью обновлён');
+    setEditTrackDraft(null);
+    await loadAll();
   }
 
   async function toggleTrack(track: Track) {
@@ -677,9 +765,30 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
             />
           </label>
 
-          {draft?.coverKey && (
-            <div className="metadata-hint">В MP3 найдена встроенная обложка — она будет сохранена автоматически.</div>
+          {(coverPreviewUrl || safeImageUrl(coverUrl)) && (
+            <div className="cover-editor-preview">
+              <img src={coverPreviewUrl || safeImageUrl(coverUrl)} alt="Предпросмотр обложки" />
+              <div>
+                <b>Предпросмотр обложки</b>
+                <span>{draft?.coverKey ? 'Обложка хранится в S3' : 'Обложка по URL'}</span>
+              </div>
+            </div>
           )}
+
+          {draft?.coverKey && (
+            <div className="metadata-hint">В MP3 найдена встроенная обложка и уже загружена в S3. Ниже её можно заменить.</div>
+          )}
+
+          <label className="upload-box">
+            <Upload size={18} />
+            {coverUploading ? 'Загружаю обложку…' : 'Загрузить / заменить обложку в S3'}
+            <input
+              type="file"
+              accept="image/*"
+              disabled={coverUploading}
+              onChange={(e) => uploadCover(e.target.files?.[0] || null)}
+            />
+          </label>
 
           <div className="two">
             <input value={artist} onChange={(e) => setArtist(e.target.value)} required placeholder="Исполнитель" />
@@ -693,13 +802,137 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
               <option value="JINGLE">Джингл</option>
             </select>
           </div>
-          <input value={coverUrl} onChange={(e) => setCoverUrl(e.target.value)} placeholder="URL обложки — если нужно заменить встроенную" />
+          <input
+            value={coverUrl}
+            onChange={(e) => {
+              setCoverUrl(e.target.value);
+              if (safeImageUrl(e.target.value)) setCoverPreviewUrl('');
+            }}
+            placeholder="Или URL обложки"
+          />
           {!draft && (
             <input value={directUrl} onChange={(e) => setDirectUrl(e.target.value)} placeholder="Или прямой URL аудио" />
           )}
           <button disabled={uploading}>Сохранить в медиатеку</button>
         </form>
       </section>
+
+
+      {editTrackDraft && (
+        <section id="track-editor" className="admin-card track-editor-card">
+          <div className="admin-section-head">
+            <h2><Pencil size={19} /> Редактор трека</h2>
+            <button type="button" onClick={() => setEditTrackDraft(null)}>Закрыть</button>
+          </div>
+
+          <form onSubmit={saveTrackEdit} className="admin-form">
+            <div className="track-editor-layout">
+              <div className="cover-editor-column">
+                <div className="cover-editor-large">
+                  {editTrackDraft.coverPreviewUrl
+                    ? <img src={editTrackDraft.coverPreviewUrl} alt="Обложка трека" />
+                    : <Music2 size={38} />}
+                </div>
+
+                <label className="upload-box">
+                  <Upload size={18} />
+                  {coverUploading ? 'Загружаю…' : 'Заменить обложку в S3'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={coverUploading}
+                    onChange={(e) => uploadCover(e.target.files?.[0] || null, true)}
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => setEditTrackDraft({
+                    ...editTrackDraft,
+                    coverKey: null,
+                    coverUrl: '',
+                    coverPreviewUrl: ''
+                  })}
+                >
+                  Удалить обложку
+                </button>
+              </div>
+
+              <div className="track-editor-fields">
+                <div className="two">
+                  <input
+                    value={editTrackDraft.artist}
+                    onChange={(e) => setEditTrackDraft({ ...editTrackDraft, artist: e.target.value })}
+                    required
+                    placeholder="Исполнитель"
+                  />
+                  <input
+                    value={editTrackDraft.title}
+                    onChange={(e) => setEditTrackDraft({ ...editTrackDraft, title: e.target.value })}
+                    required
+                    placeholder="Название"
+                  />
+                </div>
+
+                <div className="three">
+                  <input
+                    value={editTrackDraft.genre}
+                    onChange={(e) => setEditTrackDraft({ ...editTrackDraft, genre: e.target.value })}
+                    placeholder="Жанр"
+                  />
+                  <input
+                    value={editTrackDraft.duration}
+                    onChange={(e) => setEditTrackDraft({ ...editTrackDraft, duration: e.target.value })}
+                    type="number"
+                    min="1"
+                    required
+                    placeholder="Длительность, сек."
+                  />
+                  <select
+                    value={editTrackDraft.kind}
+                    onChange={(e) => setEditTrackDraft({ ...editTrackDraft, kind: e.target.value })}
+                  >
+                    <option value="MUSIC">Музыка</option>
+                    <option value="JINGLE">Джингл</option>
+                  </select>
+                </div>
+
+                <input
+                  value={editTrackDraft.coverUrl}
+                  onChange={(e) => setEditTrackDraft({
+                    ...editTrackDraft,
+                    coverUrl: e.target.value,
+                    coverKey: e.target.value ? null : editTrackDraft.coverKey,
+                    coverPreviewUrl: safeImageUrl(e.target.value) || editTrackDraft.coverPreviewUrl
+                  })}
+                  placeholder="Или URL обложки"
+                />
+
+                <input
+                  value={editTrackDraft.audioUrl}
+                  onChange={(e) => setEditTrackDraft({ ...editTrackDraft, audioUrl: e.target.value })}
+                  placeholder="Источник аудио"
+                  disabled={Boolean(tracks.find((track) => track.id === editTrackDraft.id)?.s3Key)}
+                />
+
+                <label className="upload-box">
+                  Трек активен в эфире
+                  <input
+                    type="checkbox"
+                    checked={editTrackDraft.active}
+                    onChange={(e) => setEditTrackDraft({ ...editTrackDraft, active: e.target.checked })}
+                  />
+                </label>
+
+                <div className="row-actions">
+                  <button type="submit">Сохранить все изменения</button>
+                  <button type="button" onClick={() => setEditTrackDraft(null)}>Отмена</button>
+                </div>
+              </div>
+            </div>
+          </form>
+        </section>
+      )}
 
       <section className="admin-card admin-table">
         <div className="admin-section-head">
