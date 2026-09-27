@@ -41,6 +41,8 @@ export async function GET() {
     offsetSeconds: broadcast.offsetSeconds,
     serverTime: broadcast.serverTime,
     playlistName: broadcast.playlistName,
+    sourceLabel: broadcast.sourceLabel,
+    control: broadcast.control,
     scheduleBlock: broadcast.scheduleBlock,
     queue: broadcast.queue,
     history: broadcast.queue.slice(0, 6).map((item) => ({
