@@ -1,14 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowLeft,
-  ArrowRight,
   Heart,
   Instagram,
   Pause,
   Play,
   Radio,
+  RadioTower,
   Send,
   Volume2
 } from 'lucide-react';
@@ -20,7 +19,15 @@ type Track = {
   genre?: string | null;
   coverUrl?: string | null;
   audioUrl: string;
+  duration?: number | null;
+  kind?: string;
   playedAt?: string;
+};
+
+type QueueItem = {
+  track: Track;
+  startsAt: string;
+  offsetSeconds: number;
 };
 
 type Show = {
@@ -46,6 +53,10 @@ type Station = {
   playlist: Track[];
   shows: Show[];
   history: Track[];
+  offsetSeconds: number;
+  serverTime: string;
+  playlistName: string;
+  queue: QueueItem[];
 };
 
 const fallbackCover =
@@ -56,16 +67,64 @@ export default function RadioClient() {
   const [playing, setPlaying] = useState(false);
   const [volume, setVolume] = useState(72);
   const [error, setError] = useState('');
-  const [queueIndex, setQueueIndex] = useState(0);
   const [favorite, setFavorite] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const hasUserStarted = useRef(false);
+  const autoplayTried = useRef(false);
+
+  const source = useMemo(
+    () => data?.settings.streamUrl?.trim() || data?.currentTrack?.audioUrl?.trim() || '',
+    [data?.settings.streamUrl, data?.currentTrack?.audioUrl]
+  );
+
+  const usingLiveStream = Boolean(data?.settings.streamUrl?.trim());
+  const track = data?.currentTrack;
+  const show = data?.currentShow;
+
+  const liveOffset = useCallback(() => {
+    if (!data || usingLiveStream) return 0;
+    const networkElapsed = Math.max(0, (Date.now() - new Date(data.serverTime).getTime()) / 1000);
+    const duration = data.currentTrack?.duration || 0;
+    if (!duration) return data.offsetSeconds || 0;
+    return Math.min(duration - 0.15, Math.max(0, (data.offsetSeconds || 0) + networkElapsed));
+  }, [data, usingLiveStream]);
+
+  const syncToLive = useCallback(async (resume = false) => {
+    const audio = audioRef.current;
+    if (!audio || !source) return;
+
+    if (!usingLiveStream && Number.isFinite(audio.duration)) {
+      const target = liveOffset();
+      if (Math.abs(audio.currentTime - target) > 1.5) audio.currentTime = target;
+    }
+
+    if (resume || !audio.paused) {
+      try {
+        await audio.play();
+        setPlaying(true);
+        setError('');
+      } catch {
+        setPlaying(false);
+      }
+    }
+  }, [liveOffset, source, usingLiveStream]);
 
   async function load() {
     try {
       const response = await fetch('/api/public/station', { cache: 'no-store' });
       if (!response.ok) throw new Error('Не удалось получить данные станции');
       const json: Station = await response.json();
-      setData(json);
+      setData((previous) => {
+        if (previous?.currentTrack?.id !== json.currentTrack?.id && hasUserStarted.current) {
+          requestAnimationFrame(() => {
+            const audio = audioRef.current;
+            if (!audio) return;
+            audio.load();
+            audio.addEventListener('loadedmetadata', () => syncToLive(true), { once: true });
+          });
+        }
+        return json;
+      });
       setVolume((current) => current === 72 ? (json.settings.volume ?? 72) : current);
       setError('');
     } catch (e) {
@@ -75,7 +134,7 @@ export default function RadioClient() {
 
   useEffect(() => {
     load();
-    const timer = setInterval(load, 60000);
+    const timer = setInterval(load, 5000);
     return () => clearInterval(timer);
   }, []);
 
@@ -83,66 +142,54 @@ export default function RadioClient() {
     if (audioRef.current) audioRef.current.volume = volume / 100;
   }, [volume]);
 
-  const playlist = data?.playlist || [];
-  const queueTrack = playlist.length ? playlist[queueIndex % playlist.length] : data?.currentTrack || null;
-  const source = useMemo(
-    () => data?.settings.streamUrl?.trim() || queueTrack?.audioUrl?.trim() || '',
-    [data?.settings.streamUrl, queueTrack?.audioUrl]
-  );
+  useEffect(() => {
+    if (!source || !audioRef.current || autoplayTried.current) return;
+    autoplayTried.current = true;
 
-  const usingLiveStream = Boolean(data?.settings.streamUrl?.trim());
-  const track = queueTrack;
-  const show = data?.currentShow;
+    const audio = audioRef.current;
+    const attempt = async () => {
+      try {
+        if (!usingLiveStream && audio.readyState >= 1) audio.currentTime = liveOffset();
+        await audio.play();
+        hasUserStarted.current = true;
+        setPlaying(true);
+      } catch {
+        // Нормальное поведение: большинство браузеров блокируют звук до действия пользователя.
+      }
+    };
 
-  async function playCurrent() {
-    if (!audioRef.current || !source) {
-      setError('В медиатеке пока нет активных треков. Добавь аудио в админке.');
+    if (audio.readyState >= 1) attempt();
+    else audio.addEventListener('loadedmetadata', attempt, { once: true });
+  }, [source, liveOffset, usingLiveStream]);
+
+  async function toggle() {
+    const audio = audioRef.current;
+    if (!audio || !source) {
+      setError('В эфирной ротации пока нет треков с известной длительностью.');
       return;
     }
 
+    if (!audio.paused) {
+      audio.pause();
+      return;
+    }
+
+    hasUserStarted.current = true;
     try {
-      await audioRef.current.play();
+      if (!usingLiveStream) audio.currentTime = liveOffset();
+      await audio.play();
       setPlaying(true);
       setError('');
     } catch {
       setPlaying(false);
-      setError('Не удалось запустить аудио. Проверь файл, S3-ключи и формат трека.');
+      setError('Не удалось подключиться к эфиру. Проверь аудиофайл и S3.');
     }
   }
 
-  async function toggle() {
-    if (!audioRef.current) return;
-    if (audioRef.current.paused) await playCurrent();
-    else audioRef.current.pause();
+  async function goLive() {
+    hasUserStarted.current = true;
+    await syncToLive(true);
   }
-
-  async function changeTrack(direction: number) {
-    if (usingLiveStream || !playlist.length) return;
-    const next = (queueIndex + direction + playlist.length) % playlist.length;
-    setQueueIndex(next);
-    setError('');
-
-    requestAnimationFrame(() => {
-      if (audioRef.current) {
-        audioRef.current.load();
-        if (playing) audioRef.current.play().catch(() => setPlaying(false));
-      }
-    });
-  }
-
-  function handleEnded() {
-    if (usingLiveStream || !playlist.length) {
-      setPlaying(false);
-      return;
-    }
-    setQueueIndex((current) => (current + 1) % playlist.length);
-  }
-
-  useEffect(() => {
-    if (!audioRef.current || !playing || usingLiveStream) return;
-    audioRef.current.load();
-    audioRef.current.play().catch(() => setPlaying(false));
-  }, [queueIndex]);
 
   return (
     <main className="site-shell">
@@ -154,7 +201,7 @@ export default function RadioClient() {
         <nav className="nav">
           <a className="active" href="#top">Главная</a>
           <a href="#program">Программа</a>
-          <a href="#history">История</a>
+          <a href="#history">Эфир</a>
           <a href="#shows">Шоу</a>
           <a href="/admin">Админка</a>
         </nav>
@@ -175,29 +222,26 @@ export default function RadioClient() {
 
         <div className="hero-player">
           <div className="eyebrow">
-            <span className="live-pill"><b /> {playing ? 'В ЭФИРЕ' : 'ГОТОВ К ЭФИРУ'}</span>
-            <span>{usingLiveStream ? 'LIVE STREAM' : 'АВТОМАТИЧЕСКАЯ РОТАЦИЯ'}</span>
+            <span className="live-pill"><b /> LIVE</span>
+            <span>{usingLiveStream ? 'LIVE STREAM' : data?.playlistName || 'AUTO DJ'}</span>
           </div>
           <h1>{track?.title || 'NEXUS RADIO'}</h1>
           <h2>{track?.artist || data?.settings.tagline || 'Добавь музыку в админке'}</h2>
           <div className="tags">
-            <span>{track?.genre || 'Radio'}</span>
-            <span>{playlist.length} треков</span>
-            <span>{usingLiveStream ? 'Live stream' : 'Auto DJ'}</span>
+            <span>{track?.genre || (track?.kind === 'JINGLE' ? 'Jingle' : 'Radio')}</span>
+            <span>{track?.duration ? `${Math.floor(track.duration / 60)}:${String(track.duration % 60).padStart(2, '0')}` : 'Live'}</span>
+            <span>{data?.playlistName || 'Эфир'}</span>
           </div>
 
-          <div className="player-row">
+          <div className="player-row radio-player-row">
             <button className={`ghost-control ${favorite ? 'favorite active' : 'favorite'}`} onClick={() => setFavorite(!favorite)} aria-label="В избранное">
               <Heart size={22} fill={favorite ? 'currentColor' : 'none'} />
             </button>
-            <button className="ghost-control" onClick={() => changeTrack(-1)} disabled={usingLiveStream || playlist.length < 2} aria-label="Предыдущий трек">
-              <ArrowLeft size={22} />
-            </button>
-            <button className="play-control" onClick={toggle} disabled={!source} aria-label={playing ? 'Пауза' : 'Воспроизвести'}>
+            <button className="play-control" onClick={toggle} disabled={!source} aria-label={playing ? 'Пауза' : 'Слушать эфир'}>
               {playing ? <Pause size={27} fill="currentColor" /> : <Play size={27} fill="currentColor" />}
             </button>
-            <button className="ghost-control" onClick={() => changeTrack(1)} disabled={usingLiveStream || playlist.length < 2} aria-label="Следующий трек">
-              <ArrowRight size={22} />
+            <button className="ghost-control live-sync-control" onClick={goLive} disabled={!source} aria-label="Вернуться в прямой эфир">
+              <RadioTower size={22} />
             </button>
             <div className={`waveform ${playing ? 'is-playing' : ''}`} aria-hidden="true">
               {Array.from({ length: 32 }).map((_, i) => (
@@ -213,12 +257,18 @@ export default function RadioClient() {
           <audio
             ref={audioRef}
             {...(source ? { src: source } : {})}
-            preload="metadata"
+            preload="auto"
             onPause={() => setPlaying(false)}
             onPlay={() => setPlaying(true)}
-            onEnded={handleEnded}
+            onLoadedMetadata={() => {
+              if (hasUserStarted.current && !usingLiveStream && audioRef.current) {
+                audioRef.current.currentTime = liveOffset();
+              }
+            }}
+            onEnded={() => load()}
             onError={() => source && setError('Источник аудио недоступен. Проверь S3 или URL потока.')}
           />
+          {!playing && source && <p className="autoplay-note">Нажми Play один раз, если браузер заблокировал автоматический звук.</p>}
           {error && <p className="error-banner">{error}</p>}
         </div>
 
@@ -236,9 +286,9 @@ export default function RadioClient() {
               <span className="live-pill"><b /> LIVE</span>
               <span>{show ? `${String(show.startHour).padStart(2, '0')}:00 — ${String(show.endHour).padStart(2, '0')}:00` : '24/7'}</span>
             </div>
-            <h2>{show?.title || 'NEXUS RADIO'}</h2>
+            <h2>{show?.title || data?.playlistName || 'NEXUS RADIO'}</h2>
             <h4>{show?.host || 'Автоматический эфир'}</h4>
-            <p>{show?.description || 'Непрерывная ротация музыки из медиатеки.'}</p>
+            <p>{show?.description || 'Общий синхронизированный эфир для всех слушателей.'}</p>
             <button className="air-btn"><Send size={16} /> Написать в эфир</button>
           </div>
           <img src={show?.imageUrl || 'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?auto=format&fit=crop&w=900&q=85'} alt="Студия" />
@@ -246,13 +296,13 @@ export default function RadioClient() {
 
         <article className="next-air panel">
           <h3>ДАЛЕЕ В ЭФИРЕ</h3>
-          {(data?.shows || []).slice(0, 3).map((item) => (
-            <div className="next-item" key={item.id}>
+          {(data?.queue || []).slice(1, 4).map((item) => (
+            <div className="next-item" key={`${item.track.id}-${item.startsAt}`}>
               <div className="avatar-dot"><Radio size={20} /></div>
               <div>
-                <small>{String(item.startHour).padStart(2, '0')}:00 — {String(item.endHour).padStart(2, '0')}:00</small>
-                <b>{item.title}</b>
-                <span>с {item.host}</span>
+                <small>{new Date(item.startsAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</small>
+                <b>{item.track.title}</b>
+                <span>{item.track.artist}</span>
               </div>
             </div>
           ))}
@@ -271,12 +321,16 @@ export default function RadioClient() {
       </section>
 
       <section id="history" className="track-history panel">
-        <div className="section-head"><h3>МЕДИАТЕКА ЭФИРА</h3><span>{playlist.length} активных треков</span></div>
+        <div className="section-head"><h3>БЛИЖАЙШИЙ ЭФИР</h3><span>синхронизация каждые 5 секунд</span></div>
         <div className="track-strip">
-          {playlist.slice(0, 6).map((item) => (
-            <article className={`track ${track?.id === item.id ? 'current' : ''}`} key={item.id}>
-              <img src={item.coverUrl || fallbackCover} alt="" />
-              <div><small>{track?.id === item.id ? 'Сейчас выбрано' : 'В ротации'}</small><b>{item.artist}</b><span>{item.title}</span></div>
+          {(data?.queue || []).slice(0, 6).map((item, index) => (
+            <article className={`track ${index === 0 ? 'current' : ''}`} key={`${item.track.id}-${item.startsAt}`}>
+              <img src={item.track.coverUrl || fallbackCover} alt="" />
+              <div>
+                <small>{new Date(item.startsAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</small>
+                <b>{item.track.artist}</b>
+                <span>{item.track.title}</span>
+              </div>
             </article>
           ))}
         </div>
