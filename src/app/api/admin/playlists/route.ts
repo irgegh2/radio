@@ -15,7 +15,11 @@ export async function POST(req: Request) {
   const body = await req.json();
   if (!body.name) return NextResponse.json({ error: 'Название обязательно' }, { status: 400 });
   const playlist = await prisma.playlist.create({
-    data: { name: String(body.name), description: body.description ? String(body.description) : null }
+    data: {
+      name: String(body.name),
+      description: body.description ? String(body.description) : null,
+      shuffle: body.shuffle === undefined ? true : Boolean(body.shuffle)
+    }
   });
   return NextResponse.json(playlist, { status: 201 });
 }
@@ -28,7 +32,8 @@ export async function PATCH(req: Request) {
     data: {
       name: body.name === undefined ? undefined : String(body.name),
       description: body.description === undefined ? undefined : (body.description ? String(body.description) : null),
-      active: body.active === undefined ? undefined : Boolean(body.active)
+      active: body.active === undefined ? undefined : Boolean(body.active),
+      shuffle: body.shuffle === undefined ? undefined : Boolean(body.shuffle)
     }
   });
   return NextResponse.json(playlist);
