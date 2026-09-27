@@ -27,7 +27,9 @@ type Track = {
 type QueueItem = {
   track: Track;
   startsAt: string;
+  endsAt: string;
   offsetSeconds: number;
+  source: string;
 };
 
 type Show = {
@@ -56,6 +58,12 @@ type Station = {
   offsetSeconds: number;
   serverTime: string;
   playlistName: string;
+  sourceLabel: string;
+  control: {
+    mode: string;
+    status: string;
+    version: number;
+  };
   queue: QueueItem[];
 };
 
@@ -134,7 +142,7 @@ export default function RadioClient() {
 
   useEffect(() => {
     load();
-    const timer = setInterval(load, 5000);
+    const timer = setInterval(load, 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -143,7 +151,34 @@ export default function RadioClient() {
   }, [volume]);
 
   useEffect(() => {
-    if (!source || !audioRef.current || autoplayTried.current) return;
+    const audio = audioRef.current;
+    if (!audio || !data) return;
+
+    if (data.control.status === 'PAUSED') {
+      audio.pause();
+      return;
+    }
+
+    if (!hasUserStarted.current || !source) return;
+
+    const sync = async () => {
+      try {
+        if (!usingLiveStream && audio.readyState >= 1) {
+          const target = liveOffset();
+          if (Math.abs(audio.currentTime - target) > 1.5) audio.currentTime = target;
+        }
+        if (audio.paused) await audio.play();
+      } catch {
+        // Браузер может требовать первое ручное действие слушателя.
+      }
+    };
+
+    if (audio.readyState >= 1) sync();
+    else audio.addEventListener('loadedmetadata', sync, { once: true });
+  }, [data?.currentTrack?.id, data?.control.status, data?.control.version, source, liveOffset, usingLiveStream]);
+
+  useEffect(() => {
+    if (!source || !audioRef.current || autoplayTried.current || data?.control.status === 'PAUSED') return;
     autoplayTried.current = true;
 
     const audio = audioRef.current;
@@ -160,7 +195,7 @@ export default function RadioClient() {
 
     if (audio.readyState >= 1) attempt();
     else audio.addEventListener('loadedmetadata', attempt, { once: true });
-  }, [source, liveOffset, usingLiveStream]);
+  }, [source, liveOffset, usingLiveStream, data?.control.status]);
 
   async function toggle() {
     const audio = audioRef.current;
@@ -171,6 +206,11 @@ export default function RadioClient() {
 
     if (!audio.paused) {
       audio.pause();
+      return;
+    }
+
+    if (data?.control.status === 'PAUSED') {
+      setError('Эфир временно поставлен на паузу из админки.');
       return;
     }
 
@@ -187,6 +227,10 @@ export default function RadioClient() {
   }
 
   async function goLive() {
+    if (data?.control.status === 'PAUSED') {
+      setError('Эфир временно поставлен на паузу из админки.');
+      return;
+    }
     hasUserStarted.current = true;
     await syncToLive(true);
   }
@@ -223,7 +267,7 @@ export default function RadioClient() {
         <div className="hero-player">
           <div className="eyebrow">
             <span className="live-pill"><b /> LIVE</span>
-            <span>{usingLiveStream ? 'LIVE STREAM' : data?.playlistName || 'AUTO DJ'}</span>
+            <span>{data?.control.status === 'PAUSED' ? 'ЭФИР НА ПАУЗЕ' : (usingLiveStream ? 'LIVE STREAM' : data?.playlistName || 'AUTO DJ')}</span>
           </div>
           <h1>{track?.title || 'NEXUS RADIO'}</h1>
           <h2>{track?.artist || data?.settings.tagline || 'Добавь музыку в админке'}</h2>
@@ -321,7 +365,7 @@ export default function RadioClient() {
       </section>
 
       <section id="history" className="track-history panel">
-        <div className="section-head"><h3>БЛИЖАЙШИЙ ЭФИР</h3><span>синхронизация каждые 5 секунд</span></div>
+        <div className="section-head"><h3>БЛИЖАЙШИЙ ЭФИР</h3><span>синхронизация каждую секунду</span></div>
         <div className="track-strip">
           {(data?.queue || []).slice(0, 6).map((item, index) => (
             <article className={`track ${index === 0 ? 'current' : ''}`} key={`${item.track.id}-${item.startsAt}`}>
