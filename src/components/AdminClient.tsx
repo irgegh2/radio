@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import { ExternalLink, LogOut, Music2, Radio, Trash2, Upload, Volume2 } from 'lucide-react';
 
 type Track = {
   id: number;
@@ -9,6 +10,7 @@ type Track = {
   genre?: string | null;
   audioUrl: string;
   coverUrl?: string | null;
+  s3Key?: string | null;
   active: boolean;
 };
 
@@ -108,37 +110,22 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
     if (file && file.size) {
       setUploading(true);
 
-      const presignResponse = await fetch('/api/admin/tracks/upload-url', {
+      const uploadForm = new FormData();
+      uploadForm.set('file', file);
+      const uploadResponse = await fetch('/api/admin/tracks/upload', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          fileName: file.name,
-          contentType: file.type || 'audio/mpeg'
-        })
+        body: uploadForm
       });
 
-      if (!presignResponse.ok) {
-        const json = await presignResponse.json();
-        setMsg(json.error || 'Не удалось получить S3 upload URL');
+      const upload = await uploadResponse.json();
+      if (!uploadResponse.ok) {
+        setMsg(upload.error || 'Не удалось загрузить файл в S3');
         setUploading(false);
         return;
       }
 
-      const presign = await presignResponse.json();
-      const putResponse = await fetch(presign.uploadUrl, {
-        method: 'PUT',
-        headers: { 'content-type': file.type || 'audio/mpeg' },
-        body: file
-      });
-
-      if (!putResponse.ok) {
-        setMsg('S3 отклонил загрузку файла');
-        setUploading(false);
-        return;
-      }
-
-      audioUrl = presign.publicUrl;
-      s3Key = presign.key;
+      s3Key = upload.key;
+      audioUrl = `s3://${upload.key}`;
     }
 
     const response = await fetch('/api/admin/tracks', {
@@ -162,15 +149,27 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
       return;
     }
 
-    setMsg('Трек добавлен');
-    e.currentTarget.reset();
+    setMsg('Трек добавлен в эфирную ротацию');
+    (e.target as HTMLFormElement).reset();
     load();
   }
 
   async function deleteTrack(id: number) {
-    if (!confirm('Удалить трек?')) return;
+    if (!confirm('Удалить трек из медиатеки?')) return;
     await fetch(`/api/admin/tracks?id=${id}`, { method: 'DELETE' });
     load();
+  }
+
+  async function toggleTrack(track: Track) {
+    const response = await fetch('/api/admin/tracks', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: track.id, active: !track.active })
+    });
+    if (response.ok) {
+      setMsg(track.active ? 'Трек убран из эфирной ротации' : 'Трек возвращён в эфирную ротацию');
+      load();
+    }
   }
 
   async function addShow(e: FormEvent<HTMLFormElement>) {
@@ -185,7 +184,7 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
 
     if (response.ok) {
       setMsg('Шоу добавлено');
-      e.currentTarget.reset();
+      (e.target as HTMLFormElement).reset();
       load();
     }
   }
@@ -213,7 +212,7 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
           />
           <button>Войти</button>
           {msg && <small>{msg}</small>}
-          <a href="/">← На сайт</a>
+          <a href="/">На сайт</a>
         </form>
       </div>
     );
@@ -227,8 +226,8 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
           <div className="brand-sub">CONTROL ROOM</div>
         </div>
         <div>
-          <a href="/">Открыть эфир ↗</a>
-          <button onClick={logout}>Выйти</button>
+          <a href="/"><ExternalLink size={15} /> Открыть эфир</a>
+          <button onClick={logout}><LogOut size={15} /> Выйти</button>
         </div>
       </header>
 
@@ -236,7 +235,7 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
         <div>
           <span>STATION OPERATIONS</span>
           <h1>Управление радио</h1>
-          <p>Треки, эфирная сетка, S3-медиатека и контент станции.</p>
+          <p>Треки, эфирная ротация, расписание и S3-медиатека станции.</p>
         </div>
         <div className="admin-stat"><b>{tracks.length}</b><span>треков</span></div>
         <div className="admin-stat"><b>{shows.length}</b><span>шоу</span></div>
@@ -274,7 +273,7 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
 
       <div className="admin-grid">
         <section className="admin-card">
-          <h2>Добавить трек</h2>
+          <h2><Music2 size={19} /> Добавить трек в эфир</h2>
           <form onSubmit={addTrack} className="admin-form">
             <div className="two">
               <input name="artist" required placeholder="Исполнитель" />
@@ -285,10 +284,10 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
               <input name="coverUrl" placeholder="URL обложки" />
             </div>
             <label className="upload-box">
-              Аудиофайл для S3
+              <Upload size={18} /> Аудиофайл для S3
               <input name="file" type="file" accept="audio/*" />
             </label>
-            <div className="or">или, пока S3 не подключён</div>
+            <div className="or">или прямой URL аудиофайла</div>
             <input name="audioUrl" placeholder="Прямой URL аудиофайла" />
             <button disabled={uploading}>{uploading ? 'Загрузка…' : 'Добавить трек'}</button>
           </form>
@@ -318,14 +317,19 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
           {tracks.map((track) => (
             <div className="table-row" key={track.id}>
               <div className="track-thumb">
-                {track.coverUrl ? <img src={track.coverUrl} alt="" /> : '♪'}
+                {track.coverUrl ? <img src={track.coverUrl} alt="" /> : <Music2 size={18} />}
               </div>
               <div>
                 <b>{track.artist} — {track.title}</b>
                 <span>{track.genre || 'Без жанра'}</span>
               </div>
-              <div className="url-cell">{track.audioUrl}</div>
-              <button onClick={() => deleteTrack(track.id)}>Удалить</button>
+              <div className="url-cell">{track.s3Key ? 'S3 media' : track.audioUrl}</div>
+              <div className="row-actions">
+                <button className={track.active ? 'status-active' : ''} onClick={() => toggleTrack(track)}>
+                  <Radio size={14} /> {track.active ? 'В эфире' : 'Включить'}
+                </button>
+                <button onClick={() => deleteTrack(track.id)} aria-label="Удалить"><Trash2 size={14} /></button>
+              </div>
             </div>
           ))}
         </div>
@@ -347,7 +351,7 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
               <div>
                 {String(show.startHour).padStart(2, '0')}:00 — {String(show.endHour).padStart(2, '0')}:00
               </div>
-              <button onClick={() => deleteShow(show.id)}>Удалить</button>
+              <button onClick={() => deleteShow(show.id)} aria-label="Удалить"><Trash2 size={14} /></button>
             </div>
           ))}
         </div>
