@@ -81,11 +81,12 @@ model Play {
 }
 
 model QueueOverride {
-  id        Int      @id @default(autoincrement())
-  trackId   Int
-  position  Int      @default(0)
-  createdAt DateTime @default(now())
-  track     Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  id          Int      @id @default(autoincrement())
+  trackId     Int
+  position    Int      @default(0)
+  scheduledAt DateTime
+  createdAt   DateTime @default(now())
+  track       Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
 }
 
 model BroadcastControl {
