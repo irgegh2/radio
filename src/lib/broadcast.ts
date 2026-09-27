@@ -455,7 +455,10 @@ export async function getBroadcastState() {
     }
   }
 
-  if (control.mode === 'AUTO' || (!currentTrack && control.mode !== 'MANUAL_TRACK')) {
+  if (
+    control.status !== 'STOPPED' &&
+    (control.mode === 'AUTO' || (!currentTrack && control.mode !== 'MANUAL_TRACK'))
+  ) {
     const auto = await getAutoSequence(
       now,
       settings.timezone || 'Europe/Moscow',
@@ -473,7 +476,7 @@ export async function getBroadcastState() {
     sourceLabel = block ? 'Расписание' : 'Автоматический эфир';
   }
 
-  const isPlaying = control.status !== 'PAUSED' && Boolean(currentTrack);
+  const isPlaying = control.status === 'PLAYING' && Boolean(currentTrack);
   await logCurrentTrack(currentTrack?.id || null, isPlaying, now);
 
   const queue: Array<{
@@ -555,7 +558,10 @@ export async function getBroadcastState() {
       version: control.version
     },
     playlistId: sequence?.playlistId || null,
-    playlistName: sequence?.playlistName || (currentTrack ? 'Ручной трек' : 'Нет эфира'),
+    playlistName:
+      control.status === 'STOPPED'
+        ? 'Эфир остановлен'
+        : (sequence?.playlistName || (currentTrack ? 'Ручной трек' : 'Нет эфира')),
     sourceLabel,
     scheduleBlock: block
       ? {
@@ -772,7 +778,7 @@ export async function stopBroadcast() {
     where: { id: 1 },
     update: {
       mode: 'MANUAL_TRACK',
-      status: 'PAUSED',
+      status: 'STOPPED',
       manualTrackId: null,
       manualPlaylistId: null,
       manualStartedAt: null,
@@ -782,7 +788,7 @@ export async function stopBroadcast() {
     create: {
       id: 1,
       mode: 'MANUAL_TRACK',
-      status: 'PAUSED'
+      status: 'STOPPED'
     }
   });
   await closeOpenPlay(now);
