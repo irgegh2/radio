@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
-import { ExternalLink, LogOut, Music2, Radio, Trash2, Upload, Volume2 } from 'lucide-react';
+import { ExternalLink, LogOut, Music2, Radio, Trash2, Upload } from 'lucide-react';
 
 type Track = {
   id: number;
