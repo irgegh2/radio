@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  await prisma.stationSettings.upsert({
+  const settings = await prisma.stationSettings.upsert({
     where: { id: 1 },
     update: {},
     create: {
@@ -11,18 +11,41 @@ async function main() {
       stationName: 'NEXUS RADIO',
       tagline: 'Больше, чем просто музыка',
       isLive: true,
-      volume: 72
+      volume: 72,
+      timezone: 'Europe/Moscow'
     }
   });
 
-  // Удаляем старые демонстрационные звуки, которые использовались только на этапе прототипа.
   await prisma.track.deleteMany({
-    where: {
-      audioUrl: {
-        contains: 't-rex-roar.mp3'
-      }
-    }
+    where: { audioUrl: { contains: 't-rex-roar.mp3' } }
   });
+
+  let playlist = await prisma.playlist.findFirst({ where: { name: 'Основная ротация' } });
+  if (!playlist) {
+    playlist = await prisma.playlist.create({
+      data: { name: 'Основная ротация', description: 'Плейлист по умолчанию' }
+    });
+  }
+
+  const activeTracks = await prisma.track.findMany({
+    where: { active: true },
+    orderBy: { createdAt: 'asc' }
+  });
+
+  for (let i = 0; i < activeTracks.length; i++) {
+    await prisma.playlistTrack.upsert({
+      where: { playlistId_trackId: { playlistId: playlist.id, trackId: activeTracks[i].id } },
+      update: {},
+      create: { playlistId: playlist.id, trackId: activeTracks[i].id, position: i }
+    });
+  }
+
+  if (!settings.defaultPlaylistId) {
+    await prisma.stationSettings.update({
+      where: { id: 1 },
+      data: { defaultPlaylistId: playlist.id, rotationStartedAt: new Date() }
+    });
+  }
 
   if ((await prisma.show.count()) === 0) {
     await prisma.show.createMany({
