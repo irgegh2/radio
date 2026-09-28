@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Clock3,
   ExternalLink,
@@ -165,35 +165,79 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
   const [coverPreviewUrl, setCoverPreviewUrl] = useState('');
   const [coverUploading, setCoverUploading] = useState(false);
   const [editTrackDraft, setEditTrackDraft] = useState<EditTrackDraft | null>(null);
+  const queuePollBusy = useRef(false);
 
   const activeTracks = useMemo(() => tracks.filter((track) => track.active), [tracks]);
 
   async function loadAll() {
-    const responses = await Promise.all([
-      fetch('/api/admin/tracks', { cache: 'no-store' }),
-      fetch('/api/admin/settings', { cache: 'no-store' }),
-      fetch('/api/admin/playlists', { cache: 'no-store' }),
-      fetch('/api/admin/schedule-blocks', { cache: 'no-store' }),
-      fetch('/api/admin/queue', { cache: 'no-store' })
-    ]);
+    try {
+      const responses = await Promise.all([
+        fetch('/api/admin/tracks', { cache: 'no-store' }),
+        fetch('/api/admin/settings', { cache: 'no-store' }),
+        fetch('/api/admin/playlists', { cache: 'no-store' }),
+        fetch('/api/admin/schedule-blocks', { cache: 'no-store' }),
+        fetch('/api/admin/queue', { cache: 'no-store' })
+      ]);
 
-    if (responses[0].ok) setTracks(await responses[0].json());
-    if (responses[1].ok) setSettings(await responses[1].json());
-    if (responses[2].ok) setPlaylists(await responses[2].json());
-    if (responses[3].ok) setSchedule(await responses[3].json());
-    if (responses[4].ok) setQueue(await responses[4].json());
+      if (responses[0].ok) setTracks(await responses[0].json());
+      if (responses[1].ok) setSettings(await responses[1].json());
+      if (responses[2].ok) setPlaylists(await responses[2].json());
+      if (responses[3].ok) setSchedule(await responses[3].json());
+      if (responses[4].ok) setQueue(await responses[4].json());
+    } catch {
+      // Dev-сервер может кратко перезапускаться во время HMR. Следующий poll восстановится сам.
+    }
   }
 
   async function refreshQueue() {
-    const response = await fetch('/api/admin/queue', { cache: 'no-store' });
-    if (response.ok) setQueue(await response.json());
+    if (queuePollBusy.current || document.hidden) return;
+    queuePollBusy.current = true;
+
+    try {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 4000);
+      const response = await fetch('/api/admin/queue', {
+        cache: 'no-store',
+        signal: controller.signal
+      });
+      window.clearTimeout(timeout);
+
+      if (response.ok) {
+        setQueue(await response.json());
+      }
+    } catch {
+      // Не создаём Unhandled Promise Rejection при временной недоступности localhost.
+    } finally {
+      queuePollBusy.current = false;
+    }
   }
 
   useEffect(() => {
     if (!authed) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
     loadAll();
-    const timer = setInterval(refreshQueue, 1000);
-    return () => clearInterval(timer);
+
+    const poll = async () => {
+      if (cancelled) return;
+      await refreshQueue();
+      if (!cancelled) timer = setTimeout(poll, 1500);
+    };
+
+    timer = setTimeout(poll, 1500);
+
+    const onVisibility = () => {
+      if (!document.hidden) refreshQueue();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [authed]);
 
   async function login(e: FormEvent) {
