@@ -13,6 +13,7 @@ import {
   Radio,
   RefreshCw,
   RotateCcw,
+  Search,
   SkipForward,
   Square,
   Trash2,
@@ -165,9 +166,32 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
   const [coverPreviewUrl, setCoverPreviewUrl] = useState('');
   const [coverUploading, setCoverUploading] = useState(false);
   const [editTrackDraft, setEditTrackDraft] = useState<EditTrackDraft | null>(null);
+  const [playlistPickerId, setPlaylistPickerId] = useState<number | null>(null);
+  const [playlistSearch, setPlaylistSearch] = useState('');
+  const [selectedTrackIds, setSelectedTrackIds] = useState<number[]>([]);
   const queuePollBusy = useRef(false);
 
   const activeTracks = useMemo(() => tracks.filter((track) => track.active), [tracks]);
+
+  const playlistPicker = useMemo(
+    () => playlists.find((playlist) => playlist.id === playlistPickerId) || null,
+    [playlists, playlistPickerId]
+  );
+
+  const playlistPickerTracks = useMemo(() => {
+    if (!playlistPicker) return [];
+    const existingIds = new Set(playlistPicker.items.map((item) => item.track.id));
+    const query = playlistSearch.trim().toLocaleLowerCase('ru-RU');
+
+    return activeTracks
+      .filter((track) => !existingIds.has(track.id))
+      .filter((track) => {
+        if (!query) return true;
+        return [track.artist, track.title, track.genre || '', track.kind || '']
+          .some((value) => value.toLocaleLowerCase('ru-RU').includes(query));
+      })
+      .slice(0, 100);
+  }, [activeTracks, playlistPicker, playlistSearch]);
 
   async function loadAll() {
     try {
@@ -527,22 +551,47 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
     await loadAll();
   }
 
-  async function addPlaylistItem(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
+  function openPlaylistPicker(playlistId: number) {
+    setPlaylistPickerId(playlistId);
+    setPlaylistSearch('');
+    setSelectedTrackIds([]);
+    requestAnimationFrame(() => {
+      document.getElementById('playlist-track-picker')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      });
+    });
+  }
+
+  function togglePlaylistTrackSelection(trackId: number) {
+    setSelectedTrackIds((current) =>
+      current.includes(trackId)
+        ? current.filter((id) => id !== trackId)
+        : [...current, trackId]
+    );
+  }
+
+  async function addSelectedTracksToPlaylist() {
+    if (!playlistPickerId || !selectedTrackIds.length) return;
+
     const response = await fetch('/api/admin/playlists/items', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        playlistId: Number(form.get('playlistId')),
-        trackId: Number(form.get('trackId'))
+        playlistId: playlistPickerId,
+        trackIds: selectedTrackIds
       })
     });
 
-    if (response.ok) {
-      setMsg('Трек добавлен в плейлист');
-      await loadAll();
+    const json = await response.json();
+    if (!response.ok) {
+      setMsg(json.error || 'Не удалось добавить треки');
+      return;
     }
+
+    setMsg(`Добавлено треков: ${json.added}${json.skipped ? `, уже были: ${json.skipped}` : ''}`);
+    setSelectedTrackIds([]);
+    await loadAll();
   }
 
   async function removePlaylistItem(id: number) {
@@ -1029,24 +1078,99 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
         </section>
 
         <section className="admin-card">
-          <h2>Добавить трек в плейлист</h2>
-          <form onSubmit={addPlaylistItem} className="admin-form">
-            <select name="playlistId" required>
-              <option value="">Плейлист</option>
-              {playlists.map((playlist) => <option key={playlist.id} value={playlist.id}>{playlist.name}</option>)}
-            </select>
-            <select name="trackId" required>
-              <option value="">Трек / джингл</option>
-              {activeTracks.map((track) => (
-                <option key={track.id} value={track.id}>
-                  {track.kind === 'JINGLE' ? '[JINGLE] ' : ''}{track.artist} — {track.title}
-                </option>
-              ))}
-            </select>
-            <button>Добавить</button>
-          </form>
+          <h2>Добавление музыки</h2>
+          <p className="playlist-helper-text">
+            Открой нужный плейлист ниже и нажми «+ Добавить треки». Там есть поиск и массовый выбор.
+          </p>
         </section>
       </div>
+
+      {playlistPicker && (
+        <section id="playlist-track-picker" className="admin-card playlist-track-picker">
+          <div className="admin-section-head">
+            <div>
+              <h2><ListMusic size={19} /> Добавить в «{playlistPicker.name}»</h2>
+              <span>Поиск по исполнителю, названию, жанру и типу</span>
+            </div>
+            <button type="button" onClick={() => {
+              setPlaylistPickerId(null);
+              setPlaylistSearch('');
+              setSelectedTrackIds([]);
+            }}>Закрыть</button>
+          </div>
+
+          <div className="playlist-search-row">
+            <div className="playlist-search-box">
+              <Search size={16} />
+              <input
+                autoFocus
+                value={playlistSearch}
+                onChange={(e) => setPlaylistSearch(e.target.value)}
+                placeholder="ANNA ASTI, Царица, pop…"
+              />
+            </div>
+            <button
+              type="button"
+              disabled={!selectedTrackIds.length}
+              onClick={addSelectedTracksToPlaylist}
+            >
+              Добавить выбранные ({selectedTrackIds.length})
+            </button>
+          </div>
+
+          <div className="playlist-search-meta">
+            <span>Показано: {playlistPickerTracks.length}{playlistPickerTracks.length === 100 ? ' первых совпадений' : ''}</span>
+            <button
+              type="button"
+              disabled={!playlistPickerTracks.length}
+              onClick={() => {
+                const visibleIds = playlistPickerTracks.map((track) => track.id);
+                const allSelected = visibleIds.every((id) => selectedTrackIds.includes(id));
+                setSelectedTrackIds((current) =>
+                  allSelected
+                    ? current.filter((id) => !visibleIds.includes(id))
+                    : Array.from(new Set([...current, ...visibleIds]))
+                );
+              }}
+            >
+              {playlistPickerTracks.length > 0 &&
+              playlistPickerTracks.every((track) => selectedTrackIds.includes(track.id))
+                ? 'Снять все'
+                : 'Выбрать все показанные'}
+            </button>
+          </div>
+
+          <div className="playlist-track-results">
+            {playlistPickerTracks.map((track) => {
+              const checked = selectedTrackIds.includes(track.id);
+              return (
+                <label className={`playlist-track-option ${checked ? 'is-selected' : ''}`} key={track.id}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => togglePlaylistTrackSelection(track.id)}
+                  />
+                  <div className="track-thumb">
+                    {(track.coverKey || safeImageUrl(track.coverUrl))
+                      ? <img src={track.coverKey ? `/api/public/media/${track.id}/cover` : safeImageUrl(track.coverUrl)} alt="" />
+                      : <Music2 size={16} />}
+                  </div>
+                  <div>
+                    <b>{track.artist} — {track.title}</b>
+                    <span>{track.genre || 'Без жанра'} · {fmtDuration(track.duration)}</span>
+                  </div>
+                </label>
+              );
+            })}
+
+            {!playlistPickerTracks.length && (
+              <div className="playlist-empty-search">
+                Ничего не найдено или все найденные треки уже есть в этом плейлисте.
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       <section className="admin-card">
         <div className="admin-section-head">
@@ -1066,6 +1190,7 @@ export default function AdminClient({ authenticated }: { authenticated: boolean 
                   <button onClick={() => broadcast('play-playlist', { playlistId: playlist.id })}>
                     <Play size={13} /> В эфир
                   </button>
+                  <button onClick={() => openPlaylistPicker(playlist.id)}>+ Добавить треки</button>
                   <button onClick={() => togglePlaylistShuffle(playlist)}>
                     <RefreshCw size={13} /> {playlist.shuffle ? 'Shuffle' : 'По порядку'}
                   </button>
