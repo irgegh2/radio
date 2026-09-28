@@ -143,3 +143,22 @@
 .track-editor-fields{display:flex;flex-direction:column;gap:10px}
 .track-editor-fields .row-actions{justify-content:flex-start}
 @media(max-width:760px){.track-editor-layout{grid-template-columns:1fr}.cover-editor-column{max-width:320px}}
+
+
+/* scalable playlist picker */
+.playlist-helper-text{margin:10px 0 0;color:#8d94a4;font-size:12px;line-height:1.6}
+.playlist-track-picker{scroll-margin-top:18px}
+.playlist-search-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;margin-top:14px}
+.playlist-search-box{display:flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:10px;padding:0 12px;background:#090c12}
+.playlist-search-box input{border:0!important;background:transparent!important;padding-left:0!important;width:100%}
+.playlist-search-meta{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0;color:#8d94a4;font-size:11px}
+.playlist-track-results{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-height:520px;overflow:auto;padding-right:4px}
+.playlist-track-option{display:grid;grid-template-columns:22px 40px minmax(0,1fr);gap:10px;align-items:center;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:#090c12;cursor:pointer;transition:.15s}
+.playlist-track-option:hover,.playlist-track-option.is-selected{border-color:rgba(255,255,255,.24);background:rgba(255,255,255,.045)}
+.playlist-track-option input{width:16px;height:16px}
+.playlist-track-option .track-thumb{width:40px;height:40px}
+.playlist-track-option div:last-child{display:flex;min-width:0;flex-direction:column;gap:4px}
+.playlist-track-option b{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.playlist-track-option span{font-size:10px;color:#8d94a4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.playlist-empty-search{grid-column:1/-1;padding:28px;text-align:center;border:1px dashed var(--line);border-radius:10px;color:#7f8795;font-size:12px}
+@media(max-width:760px){.playlist-search-row{grid-template-columns:1fr}.playlist-track-results{grid-template-columns:1fr}}
